@@ -1,20 +1,8 @@
-﻿# HotRadar AI - Railway Deployment Configuration
-# https://docs.railway.app/reference/config-as-code
+﻿[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+healthcheckPath = "/health"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
 
 [build]
-builder = "dockerfile"
-dockerfilePath = "Dockerfile"
-
-[deploy]
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 4"
-healthcheckPath = "/health"
-healthcheckTimeout = 300
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 5
-
-# Railway auto-injects PORT, DATABASE_URL, REDIS_URL
-# Set these in Railway dashboard:
-#   SECRET_KEY (generate with: openssl rand -hex 32)
-#   JWT_ALGORITHM=HS256
-#   JWT_EXPIRE_MINUTES=1440
-#   QDRANT_URL (from Qdrant service)
+builder = "nixpacks"
