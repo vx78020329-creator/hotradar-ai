@@ -1,6 +1,20 @@
-"use client";
+﻿"use client";
 import { cn } from "@/lib/utils";
-import { categories } from "@/lib/mock-data";
+
+const CATEGORIES = [
+  { id: "LLM", label: "LLM", icon: "🧠" },
+  { id: "Computer Vision", label: "计算机视觉", icon: "👁" },
+  { id: "Robotics", label: "机器人", icon: "🤖" },
+  { id: "AI Research", label: "AI 研究", icon: "🔬" },
+  { id: "AI Product", label: "AI 产品", icon: "📱" },
+  { id: "AI Safety", label: "AI 安全", icon: "🛡" },
+  { id: "AI Policy", label: "AI 政策", icon: "📋" },
+  { id: "AI Startup", label: "AI 创业", icon: "🚀" },
+  { id: "AI Chips", label: "AI 芯片", icon: "⚡" },
+  { id: "AI Finance", label: "AI 金融", icon: "💰" },
+  { id: "AI Healthcare", label: "AI 医疗", icon: "🏥" },
+  { id: "AI Regulation", label: "AI 监管", icon: "⚖" },
+];
 
 interface CategoryFilterProps {
   selected: string | null;
@@ -22,7 +36,7 @@ export function CategoryFilter({ selected, onSelect, className }: CategoryFilter
       >
         全部
       </button>
-      {categories.map((cat) => (
+      {CATEGORIES.map((cat) => (
         <button
           key={cat.id}
           onClick={() => onSelect(cat.id === selected ? null : cat.id)}

@@ -24,7 +24,7 @@ async def list_reports(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List AI reports."""
+    """List AI reports. Auto-generates reports if none exist."""
     query = select(Report)
     count_query = select(func.count(Report.id))
 
@@ -34,6 +34,12 @@ async def list_reports(
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
+
+    # Auto-generate reports if none exist
+    if total == 0:
+        await _auto_generate_reports(db)
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
 
     query = query.order_by(Report.created_at.desc())
     offset = (page - 1) * limit
@@ -82,22 +88,22 @@ async def generate_report(
     date_str = now.strftime("%Y-%m-%d")
 
     # Build report content
-    title = f"AI Hotspot {request.report_type.capitalize()} Report - {date_str}"
+    title = f"AI 热点{type_label(request.report_type)} - {date_str}"
     summary_parts = []
     for event in events[:5]:
-        summary_parts.append(f"- {event.title} (Heat: {event.heat_score})")
-    summary = f"Top AI stories this {request.report_type}:\n" + "\n".join(summary_parts)
+        summary_parts.append(f"- {event.title} (热度: {event.heat_score})")
+    summary = f"本{type_label(request.report_type)}AI 领域 Top 热点事件:\n" + "\n".join(summary_parts)
 
     content_sections = []
     for i, event in enumerate(events, 1):
         content_sections.append(
-            f"### {i}. {event.title}\n"
-            f"**Category:** {event.category} | **Heat Score:** {event.heat_score}\n\n"
-            f"{event.summary}\n"
+            f"## {i}. {event.title}\n\n"
+            f"**分类:** {event.category} | **热度:** {event.heat_score} | **状态:** {event.status}\n\n"
+            f"{event.content or event.summary}\n"
         )
-    content = f"# {title}\n\n{summary}\n\n" + "\n".join(content_sections)
+    content = f"# {title}\n\n{summary}\n\n" + "\n\n---\n\n".join(content_sections)
 
-    slug = f"report-{request.report_type}-{date_str}"
+    slug = f"report-{request.report_type}-{date_str}-{now.strftime('%H%M%S')}"
 
     report = Report(
         title=title,
@@ -116,3 +122,58 @@ async def generate_report(
         data=ReportResponse.model_validate(report),
         message="Report generated",
     )
+
+
+def type_label(t: str) -> str:
+    return {"daily": "日报", "weekly": "周报", "monthly": "月报", "special": "专题"}.get(t, "报告")
+
+
+async def _auto_generate_reports(db: AsyncSession):
+    """Auto-generate daily and weekly reports from existing events."""
+    now = datetime.now(timezone.utc)
+    date_str = now.strftime("%Y-%m-%d")
+
+    for rtype in ["daily", "weekly"]:
+        slug = f"report-{rtype}-{date_str}"
+        existing = await db.execute(select(Report).where(Report.slug == slug))
+        if existing.scalar_one_or_none():
+            continue
+
+        # Get top events
+        limit = 15 if rtype == "daily" else 30
+        events_result = await db.execute(
+            select(Event).order_by(Event.heat_score.desc()).limit(limit)
+        )
+        events = list(events_result.scalars().all())
+        if not events:
+            continue
+
+        label = type_label(rtype)
+        title = f"AI 热点{label} - {date_str}"
+
+        # Summary
+        top5 = events[:5]
+        summary_lines = [f"- {e.title} (热度: {e.heat_score})" for e in top5]
+        summary = f"本{label}AI 领域 Top 热点事件:\n" + "\n".join(summary_lines)
+
+        # Full content
+        sections = []
+        for i, event in enumerate(events, 1):
+            sections.append(
+                f"## {i}. {event.title}\n\n"
+                f"**分类:** {event.category} | **热度:** {event.heat_score} | **状态:** {event.status}\n\n"
+                f"{event.content or event.summary}\n"
+            )
+        content = f"# {title}\n\n{summary}\n\n" + "\n\n---\n\n".join(sections)
+
+        report = Report(
+            title=title,
+            slug=slug,
+            summary=summary,
+            content=content,
+            report_type=rtype,
+            published_at=now,
+        )
+        db.add(report)
+
+    await db.commit()

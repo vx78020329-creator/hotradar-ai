@@ -1,96 +1,149 @@
 ﻿"use client";
+import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useCompany } from "@/hooks/use-api";
-import { mockEvents } from "@/lib/mock-data";
-import { HeatBadge } from "@/components/shared/heat-badge";
-import { EventCard } from "@/components/shared/event-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Brain, Globe, MapPin, Calendar, TrendingUp, TrendingDown, ExternalLink } from "lucide-react";
-import { formatDate, formatNumber } from "@/lib/utils";
+import { ArrowLeft, Globe, Building2, ExternalLink } from "lucide-react";
+
+const API_BASE = "https://aihot-v2-production.up.railway.app/api";
+
+interface CompanyData {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  logo_url?: string;
+  website?: string;
+  industry?: string;
+  market_cap?: number;
+  created_at: string;
+}
+
+interface EventItem {
+  id: number;
+  title: string;
+  summary: string;
+  heat_score: number;
+  category: string;
+  status: string;
+}
 
 export default function CompanyDetailPage() {
   const params = useParams();
-  const { data: company, isLoading } = useCompany(params.id as string);
+  const [company, setCompany] = useState<CompanyData | null>(null);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  if (isLoading) {
-    return (<div className="space-y-6"><Skeleton className="h-8 w-32" /><Skeleton className="h-48 w-full" /><Skeleton className="h-64 w-full" /></div>);
+  useEffect(() => {
+    if (!params.id) return;
+    Promise.all([
+      fetch(`${API_BASE}/companies/${params.id}`).then((r) => r.json()),
+      fetch(`${API_BASE}/companies/${params.id}/events?limit=10`).then((r) => r.json()),
+    ])
+      .then(([companyJson, eventsJson]) => {
+        setCompany(companyJson.data || companyJson);
+        setEvents(eventsJson.data || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [params.id]);
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-8 w-32" />
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
   }
 
   if (!company) {
-    return (<div className="text-center py-20"><p className="text-[var(--muted-foreground)]">公司未找到</p><Link href="/companies"><Button variant="ghost" className="mt-4">返回公司列表</Button></Link></div>);
+    return (
+      <div className="text-center py-20">
+        <p className="text-[var(--muted-foreground)]">公司未找到</p>
+        <Link href="/companies">
+          <Button variant="ghost" className="mt-4">返回公司列表</Button>
+        </Link>
+      </div>
+    );
   }
 
-  const relatedEvents = mockEvents.filter((e) => company.relatedEvents.includes(e.id));
-
   return (
-    <div className="space-y-6">
-      <Link href="/companies" className="inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors">
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <Link
+        href="/companies"
+        className="inline-flex items-center gap-2 text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors"
+      >
         <ArrowLeft className="h-4 w-4" /> 返回公司列表
       </Link>
 
       <Card>
         <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row items-start gap-6">
-            <span className="text-5xl">{company.logo}</span>
-            <div className="flex-1">
-              <h1 className="text-3xl font-bold mb-1">{company.nameZh}</h1>
-              <p className="text-[var(--muted-foreground)] mb-4">{company.name} · {company.industry}</p>
-              <p className="text-[var(--muted-foreground)] mb-4">{company.descriptionZh}</p>
-              <div className="flex flex-wrap gap-4 text-sm text-[var(--muted-foreground)]">
-                <span className="flex items-center gap-1"><MapPin className="h-4 w-4" />{company.headquarters}</span>
-                <span className="flex items-center gap-1"><Calendar className="h-4 w-4" />成立于 {company.founded}</span>
-                <a href={company.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-[var(--primary)]"><Globe className="h-4 w-4" />官网 <ExternalLink className="h-3 w-3" /></a>
-              </div>
+          <div className="flex items-start gap-6">
+            <div className="w-16 h-16 rounded-full bg-[var(--secondary)] flex items-center justify-center text-2xl font-bold shrink-0">
+              {company.name.charAt(0)}
             </div>
-            <div className="text-center">
-              <HeatBadge score={company.heatScore} size="lg" />
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold mb-1">{company.name}</h1>
+              <p className="text-[var(--muted-foreground)] mb-4">
+                {company.industry || "AI"}
+              </p>
+              <p className="text-[var(--muted-foreground)] mb-4">
+                {company.description || `${company.name} 是 AI 行业的领先企业。`}
+              </p>
+              <div className="flex flex-wrap gap-4 text-sm text-[var(--muted-foreground)]">
+                {company.website && (
+                  <a
+                    href={company.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 hover:text-[var(--primary)]"
+                  >
+                    <Globe className="h-4 w-4" />
+                    官网 <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
+                {company.industry && (
+                  <span className="flex items-center gap-1">
+                    <Building2 className="h-4 w-4" />
+                    {company.industry}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1 space-y-6">
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><Brain className="h-5 w-5 text-[var(--primary)]" />AI 分析</CardTitle></CardHeader>
-            <CardContent><p className="text-[var(--muted-foreground)] leading-relaxed">{company.aiAnalysis}</p></CardContent>
-          </Card>
-
-          {relatedEvents.length > 0 && (
-            <div>
-              <h2 className="text-xl font-bold mb-4">相关事件</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">{relatedEvents.map((e) => (<EventCard key={e.id} event={e} />))}</div>
-            </div>
-          )}
+      {events.length > 0 && (
+        <div>
+          <h2 className="text-xl font-bold mb-4">相关事件</h2>
+          <div className="space-y-3">
+            {events.map((event) => (
+              <Link key={event.id} href={`/events/${event.id}`}>
+                <Card className="hover:border-[var(--primary)]/50 transition-all cursor-pointer group mb-3">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="secondary" className="text-xs">{event.category}</Badge>
+                      <span className="text-xs text-[var(--muted-foreground)]">热度 {event.heat_score}</span>
+                    </div>
+                    <h3 className="font-medium group-hover:text-[var(--primary)] transition-colors">
+                      {event.title}
+                    </h3>
+                    <p className="text-sm text-[var(--muted-foreground)] line-clamp-2 mt-1">
+                      {event.summary}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
         </div>
-
-        <div className="w-full lg:w-80 space-y-4">
-          {company.marketCap && (
-            <Card>
-              <CardContent className="p-6">
-                <p className="text-sm text-[var(--muted-foreground)] mb-1">市值</p>
-                <p className="text-2xl font-bold">B</p>
-                {company.stockChange && (
-                  <p className={"text-sm mt-1 " + (company.stockChange >= 0 ? "text-[var(--success)]" : "text-[var(--destructive)]")}>
-                    {company.stockChange >= 0 ? <TrendingUp className="h-3 w-3 inline" /> : <TrendingDown className="h-3 w-3 inline" />}
-                    {" "}{company.stockChange > 0 ? "+" : ""}{company.stockChange}% {company.stockSymbol}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-          <Card>
-            <CardContent className="p-6">
-              <p className="text-sm font-semibold mb-3">标签</p>
-              <div className="flex flex-wrap gap-2">{company.tags.map((tag) => (<Badge key={tag} variant="secondary">{tag}</Badge>))}</div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

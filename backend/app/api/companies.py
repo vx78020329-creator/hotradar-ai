@@ -1,6 +1,8 @@
 ﻿"""Companies API endpoints."""
 
 import math
+import re
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
@@ -15,6 +17,34 @@ from app.schemas.event import EventResponse
 
 router = APIRouter(prefix="/companies", tags=["Companies"])
 
+# Well-known AI companies for extraction
+KNOWN_COMPANIES = [
+    ("OpenAI", "AI Research", "https://openai.com"),
+    ("Google", "AI Research", "https://ai.google"),
+    ("DeepMind", "AI Research", "https://deepmind.google"),
+    ("NVIDIA", "AI Chips", "https://nvidia.com"),
+    ("Meta", "AI Research", "https://ai.meta.com"),
+    ("Microsoft", "AI Product", "https://microsoft.com"),
+    ("Anthropic", "AI Safety", "https://anthropic.com"),
+    ("Tesla", "Robotics", "https://tesla.com"),
+    ("Apple", "AI Product", "https://apple.com"),
+    ("AMD", "AI Chips", "https://amd.com"),
+    ("Intel", "AI Chips", "https://intel.com"),
+    ("Mistral AI", "LLM", "https://mistral.ai"),
+    ("Stability AI", "Computer Vision", "https://stability.ai"),
+    ("Midjourney", "Computer Vision", "https://midjourney.com"),
+    ("Hugging Face", "LLM", "https://huggingface.co"),
+    ("Cohere", "LLM", "https://cohere.com"),
+    ("ByteDance", "AI Product", "https://bytedance.com"),
+    ("Baidu", "AI Research", "https://baidu.com"),
+    ("Alibaba", "AI Product", "https://alibaba.com"),
+    ("Samsung", "AI Chips", "https://samsung.com"),
+    ("Boston Dynamics", "Robotics", "https://bostondynamics.com"),
+    ("Figure AI", "Robotics", "https://figure.ai"),
+    ("xAI", "LLM", "https://x.ai"),
+    ("Perplexity", "AI Product", "https://perplexity.ai"),
+]
+
 
 @router.get("", response_model=ApiResponse)
 async def list_companies(
@@ -23,7 +53,7 @@ async def list_companies(
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List AI companies."""
+    """List AI companies. Auto-generates from events if none exist."""
     query = select(Company)
     count_query = select(func.count(Company.id))
 
@@ -33,6 +63,12 @@ async def list_companies(
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
+
+    # Auto-generate if empty
+    if total == 0:
+        await _auto_generate_companies(db)
+        total_result = await db.execute(count_query)
+        total = total_result.scalar() or 0
 
     query = query.order_by(Company.name)
     offset = (page - 1) * limit
@@ -71,13 +107,11 @@ async def get_company_events(
     db: AsyncSession = Depends(get_db),
 ):
     """Get events related to a specific company."""
-    # Verify company exists
     company_result = await db.execute(select(Company).where(Company.id == company_id))
     company = company_result.scalar_one_or_none()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Search events by company name
     query = (
         select(Event)
         .where(Event.title.ilike(f"%{company.name}%"))
@@ -105,3 +139,40 @@ async def get_company_events(
             total_pages=math.ceil(total / limit) if total > 0 else 0,
         ),
     )
+
+
+async def _auto_generate_companies(db: AsyncSession):
+    """Auto-generate companies from events data."""
+    # Get all event titles
+    result = await db.execute(select(Event.title))
+    titles = [row[0] for row in result.all()]
+
+    if not titles:
+        return
+
+    # Count mentions
+    company_counts: dict[str, int] = {}
+    for name, industry, website in KNOWN_COMPANIES:
+        count = sum(1 for t in titles if name.lower() in t.lower())
+        if count > 0:
+            company_counts[name] = count
+
+    for name, industry, website in KNOWN_COMPANIES:
+        # Check if already exists
+        existing = await db.execute(select(Company).where(Company.name == name))
+        if existing.scalar_one_or_none():
+            continue
+
+        mentions = company_counts.get(name, 0)
+        slug = name.lower().replace(" ", "-")
+
+        company = Company(
+            name=name,
+            slug=slug,
+            description=f"{name} is a leading company in the {industry} sector.",
+            website=website,
+            industry=industry,
+        )
+        db.add(company)
+
+    await db.commit()

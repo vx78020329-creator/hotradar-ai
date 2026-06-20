@@ -1,83 +1,127 @@
-"use client";
+﻿"use client";
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { useSearch } from "@/hooks/use-api";
-import { EventCard } from "@/components/shared/event-card";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { EventCardSkeleton } from "@/components/shared/loading-skeleton";
-import { Search, Building2, FileText } from "lucide-react";
-import Link from "next/link";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Search as SearchIcon, Building2 } from "lucide-react";
+
+const API_BASE = "https://aihot-v2-production.up.railway.app/api";
 
 function SearchContent() {
   const searchParams = useSearchParams();
   const initialQuery = searchParams.get("q") || "";
   const [query, setQuery] = useState(initialQuery);
-  const { data, isLoading } = useSearch(query);
+  const [results, setResults] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const doSearch = (q: string) => {
+    if (!q.trim()) {
+      setResults([]);
+      return;
+    }
+    setLoading(true);
+    fetch(`${API_BASE}/events?limit=50`)
+      .then((r) => r.json())
+      .then((json) => {
+        const events = (json.data || []).filter(
+          (e: any) =>
+            e.title?.toLowerCase().includes(q.toLowerCase()) ||
+            e.summary?.toLowerCase().includes(q.toLowerCase()) ||
+            e.category?.toLowerCase().includes(q.toLowerCase())
+        );
+        setResults(events);
+      })
+      .catch(() => setResults([]))
+      .finally(() => setLoading(false));
+  };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Search</h1>
-        <p className="text-[var(--muted-foreground)] mt-1">Search AI hot events, companies and reports</p>
+        <h1 className="text-3xl font-bold">搜索</h1>
+        <p className="text-[var(--muted-foreground)] mt-1">搜索 AI 热点事件、公司和报告</p>
       </div>
 
       <div className="relative max-w-2xl">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)]" />
-        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Type keywords..." className="pl-12 h-12 text-base" />
+        <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[var(--muted-foreground)]" />
+        <Input
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            doSearch(e.target.value);
+          }}
+          placeholder="输入关键词搜索..."
+          className="pl-12 h-12 text-base"
+        />
       </div>
 
       {!query && (
         <div className="text-center py-16">
-          <Search className="h-16 w-16 mx-auto text-[var(--muted-foreground)] mb-4 opacity-50" />
-          <p className="text-[var(--muted-foreground)]">Enter keywords to search</p>
+          <SearchIcon className="h-16 w-16 mx-auto text-[var(--muted-foreground)] mb-4 opacity-50" />
+          <p className="text-[var(--muted-foreground)]">输入关键词开始搜索</p>
           <div className="flex flex-wrap justify-center gap-2 mt-4">
-            {["GPT-5", "Robotics", "AI Chips", "Autonomous Driving", "OpenAI"].map((tag) => (
-              <button key={tag} onClick={() => setQuery(tag)} className="px-3 py-1.5 rounded-full bg-[var(--secondary)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer">{tag}</button>
+            {["GPT-5", "Robotics", "AI Chips", "OpenAI", "LLM", "NVIDIA"].map((tag) => (
+              <button
+                key={tag}
+                onClick={() => {
+                  setQuery(tag);
+                  doSearch(tag);
+                }}
+                className="px-3 py-1.5 rounded-full bg-[var(--secondary)] text-sm text-[var(--muted-foreground)] hover:text-[var(--foreground)] transition-colors cursor-pointer"
+              >
+                {tag}
+              </button>
             ))}
           </div>
         </div>
       )}
 
-      {query && isLoading && (
+      {loading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {Array.from({ length: 3 }).map((_, i) => (<EventCardSkeleton key={i} />))}
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full" />
+          ))}
         </div>
       )}
 
-      {data && query && (
-        <div className="space-y-8">
-          {data.events.length > 0 && (
-            <div>
-              <h2 className="text-xl font-bold mb-4">Events ({data.events.length})</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {data.events.map((event) => (<EventCard key={event.id} event={event} />))}
-              </div>
+      {query && !loading && (
+        <div className="space-y-4">
+          <p className="text-sm text-[var(--muted-foreground)]">
+            找到 {results.length} 个结果
+          </p>
+          {results.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {results.map((event: any) => (
+                <Link key={event.id} href={`/events/${event.id}`}>
+                  <Card className="h-full hover:border-[var(--primary)]/50 transition-all cursor-pointer group">
+                    <CardContent className="p-5">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="secondary" className="text-xs">
+                          {event.category}
+                        </Badge>
+                        <span className="text-xs text-[var(--muted-foreground)]">
+                          热度 {event.heat_score}
+                        </span>
+                      </div>
+                      <h3 className="font-bold mb-2 group-hover:text-[var(--primary)] transition-colors line-clamp-2">
+                        {event.title}
+                      </h3>
+                      <p className="text-sm text-[var(--muted-foreground)] line-clamp-2">
+                        {event.summary}
+                      </p>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
             </div>
-          )}
-
-          {data.companies.length > 0 && (
-            <div>
-              <h2 className="text-xl font-bold mb-4">Companies ({data.companies.length})</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {data.companies.map((company) => (
-                  <Link key={company.id} href={`/companies/${company.id}`}>
-                    <Card className="hover:border-[var(--primary)]/50 transition-all cursor-pointer">
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <span className="text-2xl">{company.logo}</span>
-                        <div><p className="font-medium">{company.nameZh}</p><p className="text-xs text-[var(--muted-foreground)]">{company.industry}</p></div>
-                      </CardContent>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {data.events.length === 0 && data.companies.length === 0 && (
+          ) : (
             <div className="text-center py-16">
-              <p className="text-[var(--muted-foreground)]">No results found for &quot;{query}&quot;</p>
+              <p className="text-[var(--muted-foreground)]">
+                未找到 &quot;{query}&quot; 相关结果
+              </p>
             </div>
           )}
         </div>
@@ -88,7 +132,13 @@ function SearchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="py-16 text-center text-[var(--muted-foreground)]">Loading...</div>}>
+    <Suspense
+      fallback={
+        <div className="py-16 text-center text-[var(--muted-foreground)]">
+          Loading...
+        </div>
+      }
+    >
       <SearchContent />
     </Suspense>
   );
