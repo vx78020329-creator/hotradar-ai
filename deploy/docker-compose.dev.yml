@@ -1,0 +1,70 @@
+﻿# HotRadar AI - Development Docker Compose
+# Uses SQLite for database, no external DB needed
+# Usage: docker compose -f deploy/docker-compose.dev.yml up -d
+
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: hotradar-backend-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite+aiosqlite:///./hotradar.db
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=dev-secret-key-not-for-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRE_MINUTES=1440
+      - DEBUG=true
+      - LOG_LEVEL=debug
+    depends_on:
+      - redis
+    volumes:
+      - ../backend:/app
+      - backend_db:/app
+    restart: unless-stopped
+    networks:
+      - hotradar-dev-net
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      target: base
+    container_name: hotradar-frontend-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NODE_ENV=development
+    depends_on:
+      - backend
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    restart: unless-stopped
+    networks:
+      - hotradar-dev-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: hotradar-redis-dev
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - hotradar-dev-net
+
+volumes:
+  backend_db:
+    driver: local
+
+networks:
+  hotradar-dev-net:
+    driver: bridge
